@@ -1129,8 +1129,7 @@ impl TermWindow {
                 MuxNotification::WindowTitleChanged { .. }
                 | MuxNotification::Alert {
                     alert:
-                        Alert::OutputSinceFocusLost
-                        | Alert::CurrentWorkingDirectoryChanged
+                        Alert::CurrentWorkingDirectoryChanged
                         | Alert::WindowTitleChanged(_)
                         | Alert::TabTitleChanged(_)
                         | Alert::IconTitleChanged(_),
@@ -1163,7 +1162,7 @@ impl TermWindow {
                     window.invalidate();
                 }
                 MuxNotification::Alert {
-                    alert: Alert::ToastNotification { .. },
+                    alert: Alert::ToastNotification { .. } | Alert::OutputSinceFocusLost,
                     ..
                 } => {}
                 MuxNotification::TabAddedToWindow {
