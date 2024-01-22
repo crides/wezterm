@@ -1,9 +1,12 @@
 name: update-flake-lock
+<<<<<<< HEAD
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
 
+=======
+>>>>>>> 2b5c28962 (no workflow triggers)
 jobs:
   lockfile:
     runs-on: ubuntu-latest

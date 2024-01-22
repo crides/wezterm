@@ -1,10 +1,5 @@
 name: fedora39_tag
 
-on:
-  push:
-    tags:
-      - "20*"
-
 jobs:
   build:
     runs-on: "ubuntu-latest"

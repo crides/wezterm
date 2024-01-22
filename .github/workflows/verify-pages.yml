@@ -1,16 +1,5 @@
 name: verify-pages
 
-on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "docs/**"
-      - "ci/build-docs.sh"
-      - "ci/generate-docs.py"
-      - "ci/subst-release-info.py"
-      - ".github/workflows/verify-pages.yml"
-
 jobs:
   build-docs:
     env:

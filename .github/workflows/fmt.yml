@@ -1,19 +1,5 @@
 name: fmt
 
-on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "**/*.rs"
-      - ".github/workflows/fmt.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "**/*.rs"
-      - ".github/workflows/fmt.yml"
-
 jobs:
   check-code-formatting:
     runs-on: ubuntu-latest

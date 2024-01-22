@@ -1,5 +1,6 @@
 name: Nix
 
+<<<<<<< HEAD
 on:
   pull_request:
     branches:
@@ -16,6 +17,8 @@ on:
       - '.github/workflows/nix.yml'
       - 'nix/**'
 
+=======
+>>>>>>> 2b5c28962 (no workflow triggers)
 jobs:
   lints:
     name: Build
@@ -32,4 +35,8 @@ jobs:
           flake-lock-path: ./nix/flake.lock
           ignore-missing-flake-lock: false
       - name: Build default package
+<<<<<<< HEAD
         run: nix build ./nix
+=======
+        run: nix build nix
+>>>>>>> 2b5c28962 (no workflow triggers)

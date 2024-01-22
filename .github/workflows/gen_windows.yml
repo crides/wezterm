@@ -1,20 +1,5 @@
 name: windows
 
-on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "**/*.rs"
-      - "**/Cargo.lock"
-      - "**/Cargo.toml"
-      - ".github/workflows/gen_windows.yml"
-      - "assets/fonts/**/*"
-      - "assets/icon/*"
-      - "assets/windows/**/*"
-      - "ci/deploy.sh"
-      - "ci/windows-installer.iss"
-
 jobs:
   build:
     runs-on: "windows-latest"
