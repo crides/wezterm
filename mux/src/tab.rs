@@ -316,22 +316,21 @@ where
 
 /// Computes the minimum (x, y) size based on the panes in this portion
 /// of the tree.
-fn compute_min_size(tree: &mut Tree) -> (usize, usize) {
+fn compute_min_size(tree: &Tree) -> (usize, usize) {
     match tree {
-        Tree::Node { data: None, .. } | Tree::Empty => (1, 1),
         Tree::Node {
             left,
             right,
             data: Some(data),
         } => {
-            let (left_x, left_y) = compute_min_size(&mut *left);
-            let (right_x, right_y) = compute_min_size(&mut *right);
+            let (left_x, left_y) = compute_min_size(left);
+            let (right_x, right_y) = compute_min_size(right);
             match data.direction {
                 SplitDirection::Vertical => (left_x.max(right_x), left_y + right_y + 1),
                 SplitDirection::Horizontal => (left_x + right_x + 1, left_y.max(right_y)),
             }
         }
-        Tree::Leaf(_) => (1, 1),
+        _ => (1, 1),
     }
 }
 
@@ -356,26 +355,26 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
                         x_adjust = new_cols.saturating_sub(data.first.cols as isize);
 
                         if x_adjust != 0 {
-                            adjust_x_size(&mut *left, x_adjust, cell_dimensions);
+                            adjust_x_size(left, x_adjust, cell_dimensions);
                             data.first.cols = new_cols.try_into().unwrap();
                             data.first.pixel_width =
                                 data.first.cols.saturating_mul(cell_dimensions.pixel_width);
 
-                            adjust_x_size(&mut *right, x_adjust, cell_dimensions);
+                            adjust_x_size(right, x_adjust, cell_dimensions);
                             data.second.cols = data.first.cols;
                             data.second.pixel_width = data.first.pixel_width;
                         }
                         return;
                     }
                     SplitDirection::Horizontal if x_adjust > 0 => {
-                        adjust_x_size(&mut *left, 1, cell_dimensions);
+                        adjust_x_size(left, 1, cell_dimensions);
                         data.first.cols += 1;
                         data.first.pixel_width =
                             data.first.cols.saturating_mul(cell_dimensions.pixel_width);
                         x_adjust -= 1;
 
                         if x_adjust > 0 {
-                            adjust_x_size(&mut *right, 1, cell_dimensions);
+                            adjust_x_size(right, 1, cell_dimensions);
                             data.second.cols += 1;
                             data.second.pixel_width =
                                 data.second.cols.saturating_mul(cell_dimensions.pixel_width);
@@ -385,14 +384,14 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
                     SplitDirection::Horizontal => {
                         // x_adjust is negative
                         if data.first.cols > 1 {
-                            adjust_x_size(&mut *left, -1, cell_dimensions);
+                            adjust_x_size(left, -1, cell_dimensions);
                             data.first.cols -= 1;
                             data.first.pixel_width =
                                 data.first.cols.saturating_mul(cell_dimensions.pixel_width);
                             x_adjust += 1;
                         }
                         if x_adjust < 0 && data.second.cols > 1 {
-                            adjust_x_size(&mut *right, -1, cell_dimensions);
+                            adjust_x_size(right, -1, cell_dimensions);
                             data.second.cols -= 1;
                             data.second.pixel_width =
                                 data.second.cols.saturating_mul(cell_dimensions.pixel_width);
@@ -491,6 +490,7 @@ fn apply_sizes_from_splits(tree: &Tree, size: &TerminalSize) {
             apply_sizes_from_splits(&*right, &data.second);
         }
         Tree::Leaf(pane) => {
+            dbg!((pane.pane_id(), size));
             pane.resize(*size).ok();
         }
     }
@@ -1292,43 +1292,44 @@ impl TabInner {
     }
 
     fn adjust_node_at_cursor(&mut self, cursor: &mut Cursor, delta: isize) {
+        let (min_left, min_right) = match cursor.subtree() {
+            Tree::Node { left, right, .. } => {
+                (compute_min_size(left), compute_min_size(right))
+            }
+            _ => return,
+        };
         let cell_dimensions = self.cell_dimensions();
-        if let Ok(Some(node)) = cursor.node_mut() {
-            match node.direction {
-                SplitDirection::Horizontal => {
-                    let width = node.width();
+        let node = cursor.node_mut().unwrap().as_mut().unwrap();
+        match node.direction {
+            SplitDirection::Horizontal => {
+                let width = node.width();
+                node.first.cols = node.first.cols
+                    .saturating_add_signed(delta)
+                    .max(min_left.0)
+                    .min(width.saturating_sub(1 + min_right.0));
+                node.first.pixel_width =
+                    node.first.cols.saturating_mul(cell_dimensions.pixel_width);
 
-                    let mut cols = node.first.cols as isize;
-                    cols = cols
-                        .saturating_add(delta)
-                        .max(1)
-                        .min((width as isize).saturating_sub(2));
-                    node.first.cols = cols as usize;
-                    node.first.pixel_width =
-                        node.first.cols.saturating_mul(cell_dimensions.pixel_width);
+                node.second.cols = width.saturating_sub(node.first.cols.saturating_add(1));
+                node.second.pixel_width =
+                    node.second.cols.saturating_mul(cell_dimensions.pixel_width);
+            }
+            SplitDirection::Vertical => {
+                let height = node.height();
 
-                    node.second.cols = width.saturating_sub(node.first.cols.saturating_add(1));
-                    node.second.pixel_width =
-                        node.second.cols.saturating_mul(cell_dimensions.pixel_width);
-                }
-                SplitDirection::Vertical => {
-                    let height = node.height();
+                node.first.rows = node.first.rows
+                    .saturating_add_signed(delta)
+                    .max(min_left.1)
+                    .min(height.saturating_sub(1 + min_right.1));
+                node.first.pixel_height =
+                    node.first.rows.saturating_mul(cell_dimensions.pixel_height);
 
-                    let mut rows = node.first.rows as isize;
-                    rows = rows
-                        .saturating_add(delta)
-                        .max(1)
-                        .min((height as isize).saturating_sub(2));
-                    node.first.rows = rows as usize;
-                    node.first.pixel_height =
-                        node.first.rows.saturating_mul(cell_dimensions.pixel_height);
-
-                    node.second.rows = height.saturating_sub(node.first.rows.saturating_add(1));
-                    node.second.pixel_height = node
-                        .second
-                        .rows
-                        .saturating_mul(cell_dimensions.pixel_height);
-                }
+                node.second.rows = height.saturating_sub(node.first.rows.saturating_add(1));
+                dbg!((node.first.rows, node.second.rows, min_left.1, min_right.1));
+                node.second.pixel_height = node
+                    .second
+                    .rows
+                    .saturating_mul(cell_dimensions.pixel_height);
             }
         }
     }
@@ -1347,14 +1348,15 @@ impl TabInner {
         loop {
             // Figure out the available size by looking at our immediate parent node.
             // If we are the root, look at the provided new size
-            let pane_size = if let Some((branch, Some(parent))) = cursor.path_to_root().next() {
-                if branch == PathBranch::IsRight {
+            let (pane_size, parent_size) = if let Some((branch, Some(parent))) = cursor.path_to_root().next() {
+                let pane_size = if branch == PathBranch::IsRight {
                     parent.second
                 } else {
                     parent.first
-                }
+                };
+                (pane_size, parent.size())
             } else {
-                root_size
+                (root_size, root_size)
             };
 
             if cursor.is_leaf() {
