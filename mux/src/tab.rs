@@ -348,6 +348,7 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
             } => {
                 data.first.dpi = cell_dimensions.dpi;
                 data.second.dpi = cell_dimensions.dpi;
+                let req = x_adjust;
                 match data.direction {
                     SplitDirection::Vertical => {
                         let new_cols = (data.first.cols as isize)
@@ -400,6 +401,9 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
                         }
                     }
                 }
+                if x_adjust == req {
+                    return;
+                }
             }
         }
     }
@@ -418,6 +422,7 @@ fn adjust_y_size(tree: &mut Tree, mut y_adjust: isize, cell_dimensions: &Termina
             } => {
                 data.first.dpi = cell_dimensions.dpi;
                 data.second.dpi = cell_dimensions.dpi;
+                let req = y_adjust;
                 match data.direction {
                     SplitDirection::Horizontal => {
                         let new_rows = (data.first.rows as isize)
@@ -454,6 +459,7 @@ fn adjust_y_size(tree: &mut Tree, mut y_adjust: isize, cell_dimensions: &Termina
                         }
                     }
                     SplitDirection::Vertical => {
+                        dbg!((data.first.rows, data.second.rows));
                         // y_adjust is negative
                         if data.first.rows > 1 {
                             adjust_y_size(&mut *left, -1, cell_dimensions);
@@ -472,6 +478,9 @@ fn adjust_y_size(tree: &mut Tree, mut y_adjust: isize, cell_dimensions: &Termina
                             y_adjust += 1;
                         }
                     }
+                }
+                if y_adjust == req {
+                    return;
                 }
             }
         }
@@ -1191,28 +1200,34 @@ impl TabInner {
             .pixel_height
             .checked_div(pane_size.rows)
             .unwrap_or(1);
-        if let Ok(Some(node)) = cursor.node_mut() {
-            // Adjust the size of the node; we preserve the size of the first
-            // child and adjust the second, so if we are split down the middle
-            // and the window is made wider, the right column will grow in
-            // size, leaving the left at its current width.
-            if node.direction == SplitDirection::Horizontal {
-                node.first.rows = pane_size.rows;
-                node.second.rows = pane_size.rows;
-
-                node.second.cols = pane_size.cols.saturating_sub(1 + node.first.cols);
-            } else {
-                node.first.cols = pane_size.cols;
-                node.second.cols = pane_size.cols;
-
-                node.second.rows = pane_size.rows.saturating_sub(1 + node.first.rows);
-            }
-            node.first.pixel_width = node.first.cols * cell_width;
-            node.first.pixel_height = node.first.rows * cell_height;
-
-            node.second.pixel_width = node.second.cols * cell_width;
-            node.second.pixel_height = node.second.rows * cell_height;
-        }
+        let node = if let Ok(Some(node)) = cursor.node_mut() {
+            node.clone()
+        } else {
+            return;
+        };
+        // Adjust the size of the node; we preserve the size of the first
+        // child and adjust the second, so if we are split down the middle
+        // and the window is made wider, the right column will grow in
+        // size, leaving the left at its current width.
+        let (x_diff, y_diff) = if node.direction == SplitDirection::Horizontal {
+            (
+                pane_size.cols as isize - (node.first.cols + node.second.cols + 1) as isize,
+                pane_size.rows as isize - node.first.rows.max(node.second.rows) as isize,
+            )
+        } else {
+            (
+                pane_size.cols as isize - node.first.cols.max(node.second.cols) as isize,
+                pane_size.rows as isize - (node.first.rows + node.second.rows + 1) as isize,
+            )
+        };
+        let sub = cursor.subtree_mut();
+        adjust_x_size(sub, x_diff, &pane_size);
+        adjust_y_size(sub, y_diff, &pane_size);
+        let node = cursor.node_mut().unwrap().as_mut().unwrap();
+        node.first.pixel_width = node.first.cols * cell_width;
+        node.first.pixel_height = node.first.rows * cell_height;
+        node.second.pixel_width = node.second.cols * cell_width;
+        node.second.pixel_height = node.second.rows * cell_height;
     }
 
     fn rebuild_splits_sizes_from_contained_panes(&mut self) {

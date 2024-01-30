@@ -214,6 +214,11 @@ impl<L, N> Cursor<L, N> {
         &*self.it
     }
 
+    /// References the subtree at the current cursor position
+    pub fn subtree_mut(&mut self) -> &mut Tree<L, N> {
+        &mut *self.it
+    }
+
     /// Returns true if the current position is a leaf node
     pub fn is_leaf(&self) -> bool {
         matches!(&*self.it, Tree::Leaf(_))
