@@ -1,6 +1,6 @@
 use crate::client::{ClientId, ClientInfo};
 use crate::pane::{CachePolicy, Pane, PaneId};
-use crate::tab::{SplitRequest, Tab, TabId};
+use crate::tab::{NotifyMux, SplitDirection, SplitRequest, Tab, TabId};
 use crate::window::{Window, WindowId};
 use anyhow::{anyhow, Context, Error};
 use config::keyassignment::SpawnTabDomain;
@@ -16,9 +16,11 @@ use parking_lot::{
 };
 use percent_encoding::percent_decode_str;
 use portable_pty::{CommandBuilder, ExitStatus, PtySize};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::thread;
@@ -46,6 +48,8 @@ mod tmux_pty;
 pub mod window;
 
 use crate::activity::Activity;
+
+use self::tab::SerdeUrl;
 
 pub const DEFAULT_WORKSPACE: &str = "default";
 
@@ -1439,3 +1443,48 @@ impl wezterm_term::DownloadHandler for MuxDownloader {
         }
     }
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedPaneState {
+    id: usize,
+    cwd: Option<SerdeUrl>,
+    cmd_name: Option<String>,
+    cmd: Option<PathBuf>,
+    args: Vec<String>,
+    shell: bool,
+    // zoomed: bool,
+    // active: bool,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedSplitInfo {
+    dir: SplitDirection,
+    pos: usize,
+    left: Box<SavedTree>,
+    right: Box<SavedTree>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum SavedTree {
+    Pane(Option<SavedPaneState>),
+    Split(SavedSplitInfo), 
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedTab {
+    panes: SavedTree,
+    id: usize,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedWindow {
+    tabs: Vec<SavedTab>,
+    id: usize,
+    size: TerminalSize,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SavedState {
+    windows: Vec<SavedWindow>,
+}
+

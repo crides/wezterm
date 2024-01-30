@@ -3,7 +3,7 @@ use crate::pane::{
     CachePolicy, CloseReason, ForEachPaneLogicalLine, LogicalLine, Pane, PaneId, Pattern,
     SearchResult, WithPaneLines,
 };
-use crate::renderable::*;
+use crate::{renderable::*, SavedPaneState};
 use crate::tmux::{TmuxDomain, TmuxDomainState};
 use crate::{Domain, Mux, MuxNotification};
 use anyhow::Error;
@@ -814,6 +814,18 @@ impl Pane for LocalPane {
         }
 
         Ok(results)
+    }
+
+    fn save_pane(&self) -> Option<SavedPaneState> {
+        let proc_list = self.divine_process_list(true);
+        Some(SavedPaneState {
+            id: self.pane_id(),
+            cwd: self.get_current_working_dir().map(|u| u.into()),
+            cmd_name: proc_list.map(|p| p.foreground.name),
+            cmd: proc_list.map(|p| p.foreground.executable),
+            args: proc_list.map(|p| p.foreground.argv).unwrap_or_else(|| vec![]),
+            shell: proc_list.map(|p| p.root.pid) == proc_list.map(|p| p.foreground.pid),
+        })
     }
 }
 
