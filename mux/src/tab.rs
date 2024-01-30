@@ -316,22 +316,21 @@ where
 
 /// Computes the minimum (x, y) size based on the panes in this portion
 /// of the tree.
-fn compute_min_size(tree: &mut Tree) -> (usize, usize) {
+fn compute_min_size(tree: &Tree) -> (usize, usize) {
     match tree {
-        Tree::Node { data: None, .. } | Tree::Empty => (1, 1),
         Tree::Node {
             left,
             right,
             data: Some(data),
         } => {
-            let (left_x, left_y) = compute_min_size(&mut *left);
-            let (right_x, right_y) = compute_min_size(&mut *right);
+            let (left_x, left_y) = compute_min_size(left);
+            let (right_x, right_y) = compute_min_size(right);
             match data.direction {
                 SplitDirection::Vertical => (left_x.max(right_x), left_y + right_y + 1),
                 SplitDirection::Horizontal => (left_x + right_x + 1, left_y.max(right_y)),
             }
         }
-        Tree::Leaf(_) => (1, 1),
+        _ => (1, 1),
     }
 }
 
@@ -357,26 +356,26 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
                         x_adjust = new_cols.saturating_sub(data.first.cols as isize);
 
                         if x_adjust != 0 {
-                            adjust_x_size(&mut *left, x_adjust, cell_dimensions);
+                            adjust_x_size(left, x_adjust, cell_dimensions);
                             data.first.cols = new_cols.try_into().unwrap();
                             data.first.pixel_width =
                                 data.first.cols.saturating_mul(cell_dimensions.pixel_width);
 
-                            adjust_x_size(&mut *right, x_adjust, cell_dimensions);
+                            adjust_x_size(right, x_adjust, cell_dimensions);
                             data.second.cols = data.first.cols;
                             data.second.pixel_width = data.first.pixel_width;
                         }
                         return;
                     }
                     SplitDirection::Horizontal if x_adjust > 0 => {
-                        adjust_x_size(&mut *left, 1, cell_dimensions);
+                        adjust_x_size(left, 1, cell_dimensions);
                         data.first.cols += 1;
                         data.first.pixel_width =
                             data.first.cols.saturating_mul(cell_dimensions.pixel_width);
                         x_adjust -= 1;
 
                         if x_adjust > 0 {
-                            adjust_x_size(&mut *right, 1, cell_dimensions);
+                            adjust_x_size(right, 1, cell_dimensions);
                             data.second.cols += 1;
                             data.second.pixel_width =
                                 data.second.cols.saturating_mul(cell_dimensions.pixel_width);
@@ -386,14 +385,14 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
                     SplitDirection::Horizontal => {
                         // x_adjust is negative
                         if data.first.cols > 1 {
-                            adjust_x_size(&mut *left, -1, cell_dimensions);
+                            adjust_x_size(left, -1, cell_dimensions);
                             data.first.cols -= 1;
                             data.first.pixel_width =
                                 data.first.cols.saturating_mul(cell_dimensions.pixel_width);
                             x_adjust += 1;
                         }
                         if x_adjust < 0 && data.second.cols > 1 {
-                            adjust_x_size(&mut *right, -1, cell_dimensions);
+                            adjust_x_size(right, -1, cell_dimensions);
                             data.second.cols -= 1;
                             data.second.pixel_width =
                                 data.second.cols.saturating_mul(cell_dimensions.pixel_width);
