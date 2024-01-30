@@ -1306,43 +1306,46 @@ impl TabInner {
     }
 
     fn adjust_node_at_cursor(&mut self, cursor: &mut Cursor, delta: isize) {
+        let (min_left, min_right) = match cursor.subtree() {
+            Tree::Node { left, right, .. } => (compute_min_size(left), compute_min_size(right)),
+            _ => return,
+        };
         let cell_dimensions = self.cell_dimensions();
-        if let Ok(Some(node)) = cursor.node_mut() {
-            match node.direction {
-                SplitDirection::Horizontal => {
-                    let width = node.width();
+        let node = cursor.node_mut().unwrap().as_mut().unwrap();
+        match node.direction {
+            SplitDirection::Horizontal => {
+                let width = node.width();
+                node.first.cols = node
+                    .first
+                    .cols
+                    .saturating_add_signed(delta)
+                    .max(min_left.0)
+                    .min(width.saturating_sub(1 + min_right.0));
+                node.first.pixel_width =
+                    node.first.cols.saturating_mul(cell_dimensions.pixel_width);
 
-                    let mut cols = node.first.cols as isize;
-                    cols = cols
-                        .saturating_add(delta)
-                        .max(1)
-                        .min((width as isize).saturating_sub(2));
-                    node.first.cols = cols as usize;
-                    node.first.pixel_width =
-                        node.first.cols.saturating_mul(cell_dimensions.pixel_width);
+                node.second.cols = width.saturating_sub(node.first.cols.saturating_add(1));
+                node.second.pixel_width =
+                    node.second.cols.saturating_mul(cell_dimensions.pixel_width);
+            }
+            SplitDirection::Vertical => {
+                let height = node.height();
 
-                    node.second.cols = width.saturating_sub(node.first.cols.saturating_add(1));
-                    node.second.pixel_width =
-                        node.second.cols.saturating_mul(cell_dimensions.pixel_width);
-                }
-                SplitDirection::Vertical => {
-                    let height = node.height();
+                node.first.rows = node
+                    .first
+                    .rows
+                    .saturating_add_signed(delta)
+                    .max(min_left.1)
+                    .min(height.saturating_sub(1 + min_right.1));
+                node.first.pixel_height =
+                    node.first.rows.saturating_mul(cell_dimensions.pixel_height);
 
-                    let mut rows = node.first.rows as isize;
-                    rows = rows
-                        .saturating_add(delta)
-                        .max(1)
-                        .min((height as isize).saturating_sub(2));
-                    node.first.rows = rows as usize;
-                    node.first.pixel_height =
-                        node.first.rows.saturating_mul(cell_dimensions.pixel_height);
-
-                    node.second.rows = height.saturating_sub(node.first.rows.saturating_add(1));
-                    node.second.pixel_height = node
-                        .second
-                        .rows
-                        .saturating_mul(cell_dimensions.pixel_height);
-                }
+                node.second.rows = height.saturating_sub(node.first.rows.saturating_add(1));
+                dbg!((node.first.rows, node.second.rows, min_left.1, min_right.1));
+                node.second.pixel_height = node
+                    .second
+                    .rows
+                    .saturating_mul(cell_dimensions.pixel_height);
             }
         }
     }
