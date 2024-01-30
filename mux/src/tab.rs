@@ -404,7 +404,32 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
     }
 }
 
+fn dbg_tree(t: &Tree) -> String {
+    match t {
+        Tree::Empty => "".into(),
+        Tree::Leaf(p) => p.pane_id().to_string(),
+        Tree::Node { left, right, data } => {
+            let data = data.unwrap();
+            format!(
+                "[ {}x{} {} {} {}x{} {} ]",
+                data.first.rows,
+                data.first.cols,
+                dbg_tree(left),
+                if data.direction == SplitDirection::Horizontal {
+                    "--"
+                } else {
+                    "|"
+                },
+                data.second.rows,
+                data.second.cols,
+                dbg_tree(&right)
+            )
+        }
+    }
+}
+
 fn adjust_y_size(tree: &mut Tree, mut y_adjust: isize, cell_dimensions: &TerminalSize) {
+    dbg!((dbg_tree(tree), y_adjust));
     let (_, min_y) = compute_min_size(tree);
     while y_adjust != 0 {
         match tree {
@@ -1191,28 +1216,34 @@ impl TabInner {
             .pixel_height
             .checked_div(pane_size.rows)
             .unwrap_or(1);
-        if let Ok(Some(node)) = cursor.node_mut() {
-            // Adjust the size of the node; we preserve the size of the first
-            // child and adjust the second, so if we are split down the middle
-            // and the window is made wider, the right column will grow in
-            // size, leaving the left at its current width.
-            if node.direction == SplitDirection::Horizontal {
-                node.first.rows = pane_size.rows;
-                node.second.rows = pane_size.rows;
-
-                node.second.cols = pane_size.cols.saturating_sub(1 + node.first.cols);
-            } else {
-                node.first.cols = pane_size.cols;
-                node.second.cols = pane_size.cols;
-
-                node.second.rows = pane_size.rows.saturating_sub(1 + node.first.rows);
-            }
-            node.first.pixel_width = node.first.cols * cell_width;
-            node.first.pixel_height = node.first.rows * cell_height;
-
-            node.second.pixel_width = node.second.cols * cell_width;
-            node.second.pixel_height = node.second.rows * cell_height;
-        }
+        let node = if let Ok(Some(node)) = cursor.node_mut() {
+            node.clone()
+        } else {
+            return;
+        };
+        // Adjust the size of the node; we preserve the size of the first
+        // child and adjust the second, so if we are split down the middle
+        // and the window is made wider, the right column will grow in
+        // size, leaving the left at its current width.
+        let (x_diff, y_diff) = if node.direction == SplitDirection::Horizontal {
+            (
+                pane_size.cols as isize - (node.first.cols + node.second.cols + 1) as isize,
+                pane_size.rows as isize - node.first.rows.max(node.second.rows) as isize,
+            )
+        } else {
+            (
+                pane_size.cols as isize - node.first.cols.max(node.second.cols) as isize,
+                pane_size.rows as isize - (node.first.rows + node.second.rows + 1) as isize,
+            )
+        };
+        let sub = cursor.subtree_mut();
+        adjust_x_size(sub, x_diff, &pane_size);
+        adjust_y_size(sub, y_diff, &pane_size);
+        let node = cursor.node_mut().unwrap().as_mut().unwrap();
+        node.first.pixel_width = node.first.cols * cell_width;
+        node.first.pixel_height = node.first.rows * cell_height;
+        node.second.pixel_width = node.second.cols * cell_width;
+        node.second.pixel_height = node.second.rows * cell_height;
     }
 
     fn rebuild_splits_sizes_from_contained_panes(&mut self) {
@@ -1293,9 +1324,7 @@ impl TabInner {
 
     fn adjust_node_at_cursor(&mut self, cursor: &mut Cursor, delta: isize) {
         let (min_left, min_right) = match cursor.subtree() {
-            Tree::Node { left, right, .. } => {
-                (compute_min_size(left), compute_min_size(right))
-            }
+            Tree::Node { left, right, .. } => (compute_min_size(left), compute_min_size(right)),
             _ => return,
         };
         let cell_dimensions = self.cell_dimensions();
@@ -1303,7 +1332,9 @@ impl TabInner {
         match node.direction {
             SplitDirection::Horizontal => {
                 let width = node.width();
-                node.first.cols = node.first.cols
+                node.first.cols = node
+                    .first
+                    .cols
                     .saturating_add_signed(delta)
                     .max(min_left.0)
                     .min(width.saturating_sub(1 + min_right.0));
@@ -1317,7 +1348,9 @@ impl TabInner {
             SplitDirection::Vertical => {
                 let height = node.height();
 
-                node.first.rows = node.first.rows
+                node.first.rows = node
+                    .first
+                    .rows
                     .saturating_add_signed(delta)
                     .max(min_left.1)
                     .min(height.saturating_sub(1 + min_right.1));
@@ -1348,16 +1381,17 @@ impl TabInner {
         loop {
             // Figure out the available size by looking at our immediate parent node.
             // If we are the root, look at the provided new size
-            let (pane_size, parent_size) = if let Some((branch, Some(parent))) = cursor.path_to_root().next() {
-                let pane_size = if branch == PathBranch::IsRight {
-                    parent.second
+            let (pane_size, _parent_size) =
+                if let Some((branch, Some(parent))) = cursor.path_to_root().next() {
+                    let pane_size = if branch == PathBranch::IsRight {
+                        parent.second
+                    } else {
+                        parent.first
+                    };
+                    (pane_size, parent.size())
                 } else {
-                    parent.first
+                    (root_size, root_size)
                 };
-                (pane_size, parent.size())
-            } else {
-                (root_size, root_size)
-            };
 
             if cursor.is_leaf() {
                 // Apply our size to the tty
