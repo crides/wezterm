@@ -1,5 +1,5 @@
 use crate::domain::DomainId;
-use crate::pane::*;
+use crate::{pane::*, SavedTab, SavedTree, SavedSplitInfo};
 use crate::renderable::StableCursorPosition;
 use crate::{Mux, MuxNotification, WindowId};
 use bintree::PathBranch;
@@ -404,6 +404,7 @@ fn adjust_x_size(tree: &mut Tree, mut x_adjust: isize, cell_dimensions: &Termina
     }
 }
 
+#[allow(dead_code)]
 fn dbg_tree(t: &Tree) -> String {
     match t {
         Tree::Empty => "".into(),
@@ -429,7 +430,6 @@ fn dbg_tree(t: &Tree) -> String {
 }
 
 fn adjust_y_size(tree: &mut Tree, mut y_adjust: isize, cell_dimensions: &TerminalSize) {
-    dbg!((dbg_tree(tree), y_adjust));
     let (_, min_y) = compute_min_size(tree);
     while y_adjust != 0 {
         match tree {
@@ -515,7 +515,6 @@ fn apply_sizes_from_splits(tree: &Tree, size: &TerminalSize) {
             apply_sizes_from_splits(&*right, &data.second);
         }
         Tree::Leaf(pane) => {
-            dbg!((pane.pane_id(), size));
             pane.resize(*size).ok();
         }
     }
@@ -775,6 +774,34 @@ impl Tab {
 
     pub fn get_zoomed_pane(&self) -> Option<Arc<dyn Pane>> {
         self.inner.lock().get_zoomed_pane()
+    }
+
+    pub fn save_tab(&self) -> Option<SavedTab> {
+        fn convert_node(t: &Tree) -> Option<SavedTree> {
+            match t {
+                Tree::Empty => None,
+                Tree::Leaf(p) => Some(SavedTree::Pane(p.save())),
+                Tree::Node { left, right, data } => {
+                    let data = data.unwrap();
+                    let split_info = SavedSplitInfo {
+                        left: Box::new(convert_node(left).unwrap()),
+                        right: Box::new(convert_node(right).unwrap()),
+                        dir: data.direction,
+                        pos: if data.direction == SplitDirection::Horizontal {
+                            data.first.rows
+                        } else {
+                            data.first.cols
+                        },
+                    };
+                    Some(SavedTree::Split(split_info))
+                }
+            }
+        }
+        self.inner.lock().pane.as_ref().and_then(|t| convert_node(&t)).map(|panes| {
+            SavedTab {
+                panes,
+            }
+        })
     }
 }
 
@@ -1358,7 +1385,6 @@ impl TabInner {
                     node.first.rows.saturating_mul(cell_dimensions.pixel_height);
 
                 node.second.rows = height.saturating_sub(node.first.rows.saturating_add(1));
-                dbg!((node.first.rows, node.second.rows, min_left.1, min_right.1));
                 node.second.pixel_height = node
                     .second
                     .rows

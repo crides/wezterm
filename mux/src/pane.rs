@@ -529,7 +529,7 @@ pub trait Pane: Downcast + Send + Sync {
         None
     }
 
-    fn save_pane(&self) -> Option<SavedPaneState> {
+    fn save(&self) -> Option<SavedPaneState> {
         None
     }
 }

@@ -3396,9 +3396,11 @@ dependencies = [
  "promise",
  "rangeset",
  "serde",
+ "serde_json",
  "serial",
  "shell-words",
  "smol",
+ "tar",
  "terminfo",
  "termwiz",
  "termwiz-funcs",
@@ -3409,6 +3411,7 @@ dependencies = [
  "wezterm-ssh",
  "wezterm-term",
  "winapi",
+ "zstd",
 ]
 
 [[package]]

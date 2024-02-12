@@ -1,6 +1,6 @@
 use crate::client::{ClientId, ClientInfo};
 use crate::pane::{CachePolicy, Pane, PaneId};
-use crate::tab::{NotifyMux, SplitDirection, SplitRequest, Tab, TabId};
+use crate::tab::{SplitDirection, SplitRequest, Tab, TabId};
 use crate::window::{Window, WindowId};
 use anyhow::{anyhow, Context, Error};
 use config::keyassignment::SpawnTabDomain;
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::thread;
@@ -1376,6 +1376,34 @@ impl Mux {
 
         Ok((tab, pane, window_id))
     }
+
+    pub fn save(&self) -> SavedState {
+        SavedState {
+            windows: self.windows.read().values().filter_map(|w| w.save()).collect(),
+        }
+    }
+
+    pub fn save_state_to<P: AsRef<Path>>(&self, name: P) {
+        let state = serde_json::to_vec(&self.save()).unwrap();
+        let path = name.as_ref().with_extension("tar.zstd");
+        let mut out = std::fs::File::create(path).unwrap();
+        let mut ar = tar::Builder::new(zstd::Encoder::new(&mut out, zstd::DEFAULT_COMPRESSION_LEVEL).unwrap());
+        let mut header = tar::Header::new_gnu();
+        header.set_size(state.len() as u64);
+        ar.append_data(&mut header, "state.json", state.as_slice()).unwrap();
+        for win in self.windows.read().values() {
+            for tab in win.iter() {
+                for pane in tab.iter_panes() {
+                    let p = format!("contents/{}.txt", /* w, tab.tab_id(),*/ pane.pane.pane_id());
+                    let mut header = tar::Header::new_gnu();
+                    let content = pane.pane.get_logical_lines_raw(0..isize::MAX);
+                    header.set_size(content.len() as u64);
+                    ar.append_data(&mut header, p, content.as_bytes()).unwrap();
+                }
+            }
+        }
+        ar.into_inner().unwrap().finish().unwrap();
+    }
 }
 
 pub struct IdentityHolder {
@@ -1448,10 +1476,8 @@ impl wezterm_term::DownloadHandler for MuxDownloader {
 pub struct SavedPaneState {
     id: usize,
     cwd: Option<SerdeUrl>,
-    cmd_name: Option<String>,
-    cmd: Option<PathBuf>,
-    args: Vec<String>,
-    shell: bool,
+    root_argv: Vec<String>,
+    prog_argv: Option<Vec<String>>,
     // zoomed: bool,
     // active: bool,
 }
@@ -1473,13 +1499,11 @@ pub enum SavedTree {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SavedTab {
     panes: SavedTree,
-    id: usize,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SavedWindow {
     tabs: Vec<SavedTab>,
-    id: usize,
     size: TerminalSize,
 }
 

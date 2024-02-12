@@ -816,15 +816,14 @@ impl Pane for LocalPane {
         Ok(results)
     }
 
-    fn save_pane(&self) -> Option<SavedPaneState> {
-        let proc_list = self.divine_process_list(true);
+    fn save(&self) -> Option<SavedPaneState> {
+        let mut proc_shell = self.divine_process_list(CachePolicy::FetchImmediate).as_ref().map(|p| p.root.clone());
+        let argv_prog = proc_shell.as_mut().and_then(|p| p.children.drain().max_by_key(|p| p.1.start_time).map(|p| p.1.argv));
         Some(SavedPaneState {
             id: self.pane_id(),
-            cwd: self.get_current_working_dir().map(|u| u.into()),
-            cmd_name: proc_list.map(|p| p.foreground.name),
-            cmd: proc_list.map(|p| p.foreground.executable),
-            args: proc_list.map(|p| p.foreground.argv).unwrap_or_else(|| vec![]),
-            shell: proc_list.map(|p| p.root.pid) == proc_list.map(|p| p.foreground.pid),
+            cwd: self.get_current_working_dir(CachePolicy::FetchImmediate).map(|u| u.into()),
+            prog_argv: argv_prog,
+            root_argv: proc_shell.map(|p| p.argv).unwrap_or_else(|| vec![]),
         })
     }
 }
